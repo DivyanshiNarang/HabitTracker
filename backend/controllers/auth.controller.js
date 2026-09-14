@@ -31,7 +31,7 @@ export const register = async (req, res) => {
         });
 
         const token = signToken(user._id);
-        console.log(user);
+
         res.status(201).json({ user, token });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -46,7 +46,7 @@ export const login = async (req, res) => {
             return res.status(400)
                 .json({ message: 'Email and password is required.' });
 
-        const user = await User.findOne({ email: email.toLowerCase() });
+        const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
         if (!user || (!await user.matchPassword(password)))
             return res.status(401)
                 .json({ message: 'Invalid email or password.' });

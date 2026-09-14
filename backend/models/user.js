@@ -16,7 +16,8 @@ const userSchema = new Schema({
     password: {
         type: String,
         required: true,
-        minLength: 6
+        minLength: 6,
+        select: false,
     },
     avatar: {
         type: String,
@@ -26,23 +27,24 @@ const userSchema = new Schema({
         type: Boolean,
         default: false
     },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    toJSON: {
+        transform(doc, ret) {
+            delete ret.password;
+            return ret;
+        }
+    }
+});
 
-userSchema.pre("save", async function (next) {
-    if (!this.isModified("password")) return next();
+userSchema.pre("save", async function () {
+    if (!this.isModified("password")) return;
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
 })
 
 userSchema.methods.matchPassword = function (plain) {
     return bcrypt.compare(plain, this.password);
-}
-
-userSchema.methods.toJSON = function () {
-    const obj = this.toJSON();
-    delete obj.password;
-    return obj;
 }
 
 export const User = model("User", userSchema)
