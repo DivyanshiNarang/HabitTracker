@@ -27,29 +27,67 @@ export const parseJSON = (text) => {
     return JSON.parse(cleaned.trim());
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Gemini returns 503 UNAVAILABLE when the model is overloaded and 429 when the
+// per-minute quota is hit. Both are transient, so retry with backoff + jitter.
+const RETRYABLE = [429, 500, 502, 503, 504];
+const MAX_ATTEMPTS = 4;
+
+const statusOf = (error) => {
+    const direct = error?.status ?? error?.code ?? error?.response?.status;
+    if (typeof direct === "number") return direct;
+
+    // the SDK often only carries the upstream JSON in the message string
+    const match = /"code"\s*:\s*(\d{3})/.exec(error?.message || "");
+    return match ? Number(match[1]) : null;
+};
+
 export const chatCompletion = async ({ system, user, temperature = 0.7 }) => {
     const c = getClient();
     if (!c) {
         return {
             ok: false,
+            status: 503,
             content: 'AI features are disabled - set GEMINI_API_KEY in the backend .env to enable real AI responses.'
         }
     }
 
-    try {
-        const res = await c.models.generateContent({
-            model: MODEL,
-            contents: user,
-            config: {
-                systemInstruction: system,
-                temperature,
-            },
-        });
-        return ({ ok: true, content: (res.text || "").trim() })
-    } catch (error) {
-        console.error("AI error", error.message);
-        return ({ ok: false, content: "AI request failed. Please try again later." })
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            const res = await c.models.generateContent({
+                model: MODEL,
+                contents: user,
+                config: {
+                    systemInstruction: system,
+                    temperature,
+                },
+            });
+            return ({ ok: true, content: (res.text || "").trim() })
+        } catch (error) {
+            lastError = error;
+            const status = statusOf(error);
+
+            if (!RETRYABLE.includes(status) || attempt === MAX_ATTEMPTS) break;
+
+            const backoff = Math.round(500 * 2 ** (attempt - 1) * (1 + Math.random()));
+            console.warn(`AI ${status} on attempt ${attempt}/${MAX_ATTEMPTS}, retrying in ${backoff}ms`);
+            await sleep(backoff);
+        }
     }
+
+    const status = statusOf(lastError);
+    console.error("AI error", status, lastError?.message);
+
+    return ({
+        ok: false,
+        status: status && RETRYABLE.includes(status) ? 503 : 502,
+        content: status === 503 || status === 429
+            ? "The AI model is busy right now. Please try again in a moment."
+            : "AI request failed. Please try again later."
+    })
 }
 
 export const SYSTEM_PROMPTS = {
