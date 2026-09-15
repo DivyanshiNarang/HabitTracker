@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllStats, getHabitStats, getHeatMap, getToday, markCompleted, unmarkComplete } from '../controllers/log.controller.js';
+import { getAllStats, getHabitStats, getHeatMap, getRange, getToday, markCompleted, unmarkComplete } from '../controllers/log.controller.js';
 import { protect } from '../middlewares/auth.js';
 
 const router = Router();
