@@ -47,7 +47,7 @@ const habitSchema = new Schema({
         type: String, default: "#628786"
     },
     icon: { type: String, default: "🎯" },
-    isArchieved: { type: Boolean, default: false },
+    isArchived: { type: Boolean, default: false },
     order: { type: Number, default: 0 }
 }, { timestamps: true });
 
