@@ -14,7 +14,7 @@ export const markCompleted = async (req, res) => {
         const log = await HabitLog.findOneAndUpdate(
             { habitId, userId: req.user._id, completedDate },
             { $setOnInsert: { habitId, userId: req.user._id, completedDate } },
-            { upsert: true, new: true });
+            { upsert: true, returnDocument: 'after' });
 
         return res.status(201).json(log);
     } catch (error) {

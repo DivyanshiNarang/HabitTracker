@@ -1,8 +1,8 @@
 import { AIInsight } from '../models/aiInsight.js';
 import { Habit } from '../models/habit.js';
 import { HabitLog } from '../models/habitLog.js';
-import { chatCompletion, SYSTEM_PROMPTS } from '../utils/aiService.js';
-import { lastNDays } from '../utils/dateHelper.js';
+import { chatCompletion, parseJSON, SYSTEM_PROMPTS } from '../utils/aiService.js';
+import { calcStreak, lastNDays, todayKey } from '../utils/dateHelper.js';
 
 const buildWeeklyContext = async (userId) => {
     const habits = await Habit.find({ userId, isArchived: false });
@@ -41,10 +41,12 @@ export const weeklyReport = async (req, res) => {
                 .map((h) => `- ${h.name} (${h.category}, ${h.frequency}): completed ${h.completedDays} of the past 7 days, target ${h.targetDays}/week`
                 ).join("\n")}\n\nPlease write the personlised weekly report now.`
 
-        const { content } = await chatCompletion({
+        const { ok, status, content } = await chatCompletion({
             system: SYSTEM_PROMPTS.weekly,
             user: userMsg,
         });
+
+        if (!ok) return res.status(status).json({ message: content });
 
         await AIInsight.create({
             userId: req.user._id,
@@ -63,18 +65,20 @@ export const suggestHabits = async (req, res) => {
         const { goals, productiveTime, struggles } = req.body;
         const userMsg = `User goals: ${goals || "not provided"}\nMost productive time: ${productiveTime || "not provided"}\nStruggles are: ${struggles}\n\nSuggest 3 personalised habits now. Return JSON only.`
 
-        const { content } = await chatCompletion({
+        const { ok, status, content } = await chatCompletion({
             system: SYSTEM_PROMPTS.suggestion,
             user: userMsg,
         });
+
+        if (!ok) return res.status(status).json({ message: content });
+
         let suggestions = [];
         try {
-            const parsed = JSON.parse(content.replace(/```json|```/g, "").trim());
-            suggestions = parsed || [];
+            const parsed = parseJSON(content);
+            suggestions = Array.isArray(parsed) ? parsed : [parsed];
         } catch {
             suggestions = [];
         }
-        console.log(suggestions, content);
         if (!suggestions.length) {
             suggestions = [
                 {
@@ -119,7 +123,7 @@ export const suggestHabits = async (req, res) => {
 export const recoveryPlan = async (req, res) => {
     try {
         const { habitId } = req.body;
-        const habit = await Habit.find({
+        const habit = await Habit.findOne({
             _id: habitId,
             userId: req.user._id
         })
@@ -136,10 +140,12 @@ export const recoveryPlan = async (req, res) => {
 
         const userMsg = `Habit: ${habit.name} (${habit.category}).\n Description: ${habit.description || "none"}.\nCurrent streak ${current} days and longest ever: ${longest} days. The user just broke a streak. Write a warm, actionable 3-day recovery plan.`
 
-        const { content } = await chatCompletion({
+        const { ok, status, content } = await chatCompletion({
             system: SYSTEM_PROMPTS.recovery,
             user: userMsg,
         });
+
+        if (!ok) return res.status(status).json({ message: content });
 
         await AIInsight.create({
             userId: req.user._id,
@@ -174,21 +180,22 @@ export const chatAnalysis = async (req, res) => {
         const context = habits.map((h) => {
             const hLogs = logs.filter((l) => String(l.habitId) === String(h._id));
 
-            const byDow = [0, 0, 0, 0, 0, 0];
+            const byDow = [0, 0, 0, 0, 0, 0, 0];
             for (const l of hLogs) {
                 const dow = new Date(l.completedDate).getDay();
                 byDow[dow] += 1;
             }
 
-            return `${h.name} (${h.category}): ${hLogs.length}/30 in last 30 days, by weekday [Sun, Mon, Tue, Wed, Thu, Fri, Sat]
-            byDow)}`;
+            return `${h.name} (${h.category}): ${hLogs.length}/30 in last 30 days, by weekday [Sun, Mon, Tue, Wed, Thu, Fri, Sat] = [${byDow.join(", ")}]`;
         }).join("\n");
 
         const userMsg = `User question: "${question}"\n\n User data (last 30 days):\n${context}\n\nAnswer now.`;
-        const { content } = await chatCompletion({
+        const { ok, status, content } = await chatCompletion({
             system: SYSTEM_PROMPTS.chat,
             user: userMsg,
         });
+
+        if (!ok) return res.status(status).json({ message: content });
 
         await AIInsight.create({
             userId: req.user._id,
@@ -235,11 +242,13 @@ export const morningMotivation = async (req, res) => {
 
         const userMsg = `Today's habits and streaks:\n${context}\n\nDone today: ${done}/${total}. Write the morning message now.`
 
-        const { content } = await chatCompletion({
+        const { ok, status, content } = await chatCompletion({
             system: SYSTEM_PROMPTS.chat,
             user: userMsg,
             temperature: 0.8,
         });
+
+        if (!ok) return res.status(status).json({ message: content });
 
         await AIInsight.create({
             userId: req.user._id,

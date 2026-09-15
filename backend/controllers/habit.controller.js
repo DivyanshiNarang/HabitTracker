@@ -3,13 +3,13 @@ import { HabitLog } from '../models/habitLog.js';
 
 export const getHabits = async (req, res) => {
     try {
-        const { includedArchived } = req.query;
+        const { includeArchived } = req.query;
         const filter = { userId: req.user._id };
-        if (includedArchived !== "true") filter.isArchived = false;
+        if (includeArchived !== "true") filter.isArchived = false;
 
         const habits = await Habit.find(filter).sort({ order: 1, createdAt: 1 });
 
-        res.json({ habits });
+        res.json(habits);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -21,9 +21,9 @@ export const createHabit = async (req, res) => {
 
         if (!name) return res.status(400).json({ message: "Habit name is required." });
 
-        const count = await countDocuments({ userId: req.user._id });
+        const count = await Habit.countDocuments({ userId: req.user._id });
 
-        const habit = await User.insertOne({
+        const habit = await Habit.create({
             userId: req.user._id,
             name,
             description,
@@ -43,7 +43,7 @@ export const createHabit = async (req, res) => {
 
 export const updateHabit = async (req, res) => {
     try {
-        const habit = await User.findOne({
+        const habit = await Habit.findOne({
             _id: req.params.id,
             userId: req.user._id, // using userId so that any user can't accidently update other user's habit
         })
@@ -74,7 +74,7 @@ export const updateHabit = async (req, res) => {
 
 export const deleteHabit = async (req, res) => {
     try {
-        const habit = await findOneAndDelete({
+        const habit = await Habit.findOneAndDelete({
             _id: req.params.id,
             userId: req.user._id,
         })
